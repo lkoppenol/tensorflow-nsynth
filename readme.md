@@ -1,4 +1,4 @@
-![test workflow](https://github.com/lkoppenol/tensorflow-nsynth/actions/workflows/test.yml/badge.svg)
+![test workflow](https://github.com/lkoppenol/tensorflow-nsynth/actions/workflows/build.yml/badge.svg)
 [![Coverage Status](https://coveralls.io/repos/github/lkoppenol/tensorflow-nsynth/badge.svg?branch=main)](https://coveralls.io/github/lkoppenol/tensorflow-nsynth?branch=main)
 [![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://opensource.org/licenses/MIT)
 ### Requirements
