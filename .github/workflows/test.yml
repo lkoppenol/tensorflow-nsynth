@@ -37,3 +37,8 @@ jobs:
     - name: Test with pytest
       run: |
         python -m pytest
+    - name: Coverall test
+      run: |
+        pip install coveralls
+        coverage run --source=mypkg -m pytest tests/
+        coveralls
