@@ -40,5 +40,7 @@ jobs:
     - name: Coverall test
       run: |
         pip install coveralls
-        coverage run --source=mypkg -m pytest tests/
+        coverage run --source=rimworld -m pytest tests/
         coveralls
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
