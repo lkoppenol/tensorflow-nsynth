@@ -1,0 +1,4 @@
+tensorflow==2.6.0
+tensorflow-io==0.21.0
+librosa==0.8.1
+pytest==6.2.5
