@@ -32,6 +32,12 @@ def label_operation(function):
 
 @label_operation
 def extract_filename(label: tf.Tensor):
+    """
+    Extract the filename from a path by taking the part after the last "/"
+
+    :param label: the full file path, dtype=string
+    :return: the filename, dtype=string
+    """
     filename = (
         tf.strings
         .split(label, sep="/")
@@ -44,10 +50,11 @@ def extract_filename(label: tf.Tensor):
 def extract_pitch_sparse(label: tf.Tensor):
     """
     Example:
-    data/nsynth-test.jsonwav/nsynth-test/audio/bass_electronic_018-028-100.wav --> extract 018 --> bucket 4
+    data/nsynth-test.jsonwav/nsynth-test/audio/bass_electronic_018-028-100.wav --> extract 028 --> bucket 7
+    (min pitch is 21, so mapping is using -21)
 
     :param label: full path label Tensor, dtype=string
-    :return: Tensor with Sparse label: e.g 6, dtype=int8,.
+    :return: Tensor with Sparse label: e.g 6, dtype=int32
     """
     # See https://magenta.tensorflow.org/datasets/nsynth -> Description
     min_pitch = 21  # max_pitch = 108
@@ -60,3 +67,18 @@ def extract_pitch_sparse(label: tf.Tensor):
     pitch = tf.strings.to_number(pitch_string, out_type=tf.int32)
     pitch_label = pitch - min_pitch
     return pitch_label
+
+
+@label_operation
+def one_hot_pitch(label: tf.Tensor):
+    """
+    Only pitches correctly encoded using extract_pitch_sparse are allowed.
+
+    :param label: a sparse label, e.g. 6
+    :return: a dense label, e.g. [0, 0, 0, 1, ...]
+    """
+    min_pitch = 21
+    max_pitch = 108
+    depth = max_pitch - min_pitch
+    one_hot = tf.one_hot(label, depth=depth)
+    return one_hot
