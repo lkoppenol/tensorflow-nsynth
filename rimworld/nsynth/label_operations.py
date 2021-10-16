@@ -41,19 +41,22 @@ def extract_filename(label: tf.Tensor):
 
 
 @label_operation
-def extract_instrument_bucket(label: tf.Tensor, num_buckets=10):
+def extract_pitch_sparse(label: tf.Tensor):
     """
     Example:
-    data/nsynth-test.jsonwav/nsynth-test/audio/bass_electronic_018-28-100.wav --> extract 018 --> bucket 4
+    data/nsynth-test.jsonwav/nsynth-test/audio/bass_electronic_018-028-100.wav --> extract 018 --> bucket 4
 
     :param label: full path label Tensor, dtype=string
-    :param num_buckets: total number of instruments
-    :return: Tensor with Sparse label: e.g 6, dtype=int64
+    :return: Tensor with Sparse label: e.g 6, dtype=int8,.
     """
-    instrument = tf.strings.regex_replace(
+    # See https://magenta.tensorflow.org/datasets/nsynth -> Description
+    min_pitch = 21  # max_pitch = 108
+
+    pitch_string = tf.strings.regex_replace(
         label,
         pattern=FILE_PATTERN,
         rewrite=r"\4"
     )
-    bucket = tf.strings.to_hash_bucket_fast(instrument, num_buckets)
-    return bucket
+    pitch = tf.strings.to_number(pitch_string, out_type=tf.int32)
+    pitch_label = pitch - min_pitch
+    return pitch_label
