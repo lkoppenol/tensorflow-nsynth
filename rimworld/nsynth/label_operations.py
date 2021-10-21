@@ -82,3 +82,25 @@ def one_hot_pitch(label: tf.Tensor):
     depth = max_pitch - min_pitch
     one_hot = tf.one_hot(label, depth=depth)
     return one_hot
+
+
+@label_operation
+def all_ones(_: tf.Tensor):
+    """
+    Set label to 1
+
+    :param _: is ignored
+    :return: one, dtype=tf.int32
+    """
+    return tf.constant(1, dtype=tf.int32)
+
+
+@label_operation
+def all_zeros(_: tf.Tensor):
+    """
+    Set label to 0
+
+    :param _: is ignored
+    :return: one, dtype=tf.int32
+    """
+    return tf.constant(0, dtype=tf.int32)

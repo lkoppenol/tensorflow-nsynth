@@ -65,3 +65,19 @@ def test_one_hot_pitch():
         assert tf.reduce_all(tf.equal(tensor, one_hot))
 
 
+def test_all_ones():
+    """
+    Test if we get a one
+    """
+    tensor = tf.constant("2", dtype=tf.string)
+    _, one = ops.all_ones(None, tensor)
+    assert tf.equal(one, tf.constant(1, dtype=tf.int32))
+
+
+def test_all_zeros():
+    """
+    Test if we get a one
+    """
+    tensor = tf.constant("2", dtype=tf.string)
+    _, zero = ops.all_zeros(None, tensor)
+    assert tf.equal(zero, tf.constant(0, dtype=tf.int32))
