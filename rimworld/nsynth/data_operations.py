@@ -111,6 +111,19 @@ def zero_pad(tensor: tf.Tensor, length=64_000):
 
 
 @data_operation
+def get_first_second(tensor: tf.Tensor, sample_rate=16_000):
+    """
+    Select only the first second of audio
+
+    :param tensor: 1D numerical tensor
+    :param sample_rate: default nsynth = 16_000 hz
+    :return: 1D numerical tensor with same dtype, shape=(sample_rate, )
+    """
+    first_second = tensor[:sample_rate]
+    return first_second
+
+
+@data_operation
 def create_spectrogram(tensor: tf.Tensor, nfft=2048, window=2048, stride=512):
     """
     Create a frequency-time grid with relative intensity from an audio signal. The complex component (phase) is lost.
