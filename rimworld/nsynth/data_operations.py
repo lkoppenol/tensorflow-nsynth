@@ -1,217 +1,242 @@
+import abc
 import tensorflow as tf
 import tensorflow_io as tfio
 import librosa
 
 
-def data_operation(function):
-    """
-    Decorator function for data operations.
-    An operation takes two input arguments; a data tensor and a label tensor.
-    A data operation requires only the data tensor and passed the rest on.
-    :param function:
-    :return:
-    """
-    def decorator(data: tf.Tensor, label: tf.Tensor):
+class DataOperation(abc.ABC):
+    def __init__(self):
+        pass
+
+    def data_op(self, data: tf.Tensor):
+        raise NotImplementedError()
+
+    def __call__(self, data: tf.Tensor, label: tf.Tensor):
+        return self.data_op(data), label
+
+
+class ReadFile(DataOperation):
+    def data_op(self, data: tf.Tensor):
         """
-        :param data: data tensor used by the function
-        :param label: Is ignored and passed on to next operator
+        `data operation` version of tf io read_file
+
+        :param data: Tensor with filename, dtype=string
+        :return: Tensor with file contents, dtype=string
+        """
+        file_content = tf.io.read_file(data)
+        return file_content
+
+
+class DecodeWav(DataOperation):
+    def data_op(self, data: tf.Tensor):
+        """
+        Decode a wave file which was read by `tf.io.read_file`
+
+        :param data: Tensor with dtype=string
+        :return: Tensor with dtype=int16
+        """
+        decoded = tfio.audio.decode_wav(
+            data,
+            dtype=tf.int16
+        )
+        return decoded
+
+
+class Squeeze(DataOperation):
+    def data_op(self, data: tf.Tensor):
+        """
+        Drop the last dimension of a Tensor
+
+        :param data: Tensor with dimension [x, 1]
+        :return: Tensor with dimension [x, ]
+        """
+        squeezed = tf.squeeze(
+            data,
+            axis=[-1]
+        )
+        return squeezed
+
+
+class CastNormalizedFloat(DataOperation):
+    def data_op(self, data: tf.Tensor):
+        """
+        Cast to float and normalize between -1 and 1 by dividing by the max of the absolute
+
+        :param data: Tensor with any numerical type
+        :return: Tensor with dtype=float32, ranged between -1 and 1
+        """
+        floated = tf.cast(
+            data,
+            tf.float32
+        )
+        absolute = tf.abs(floated)
+        maximum = tf.reduce_max(absolute)
+        normalized = floated / maximum
+        return normalized
+
+
+class Trim(DataOperation):
+    def __init__(self, epsilon=0.1):
+        self.epsilon = epsilon
+        super().__init__()
+
+    def data_op(self, data: tf.Tensor):
+        """
+        Drop noise at start and end of signal if below threshold
+        :param data:
         :return:
         """
-        result = function(data)
-        return result, label
-    return decorator
+        position = tfio.audio.trim(data, axis=0, epsilon=self.epsilon)
+        start = position[0]
+        stop = position[1]
+        return data[start:stop]
 
 
-@data_operation
-def read_file(tensor: tf.Tensor):
-    """
-    `data operation` version of tf io read_file
+class ZeroPad(DataOperation):
+    def __init__(self, length=64_000):
+        self.length = length
+        super().__init__()
 
-    :param tensor: Tensor with filename, dtype=string
-    :return: Tensor with file contents, dtype=string
-    """
-    file_content = tf.io.read_file(tensor)
-    return file_content
+    def data_op(self, data: tf.Tensor):
+        """
+        Add zeros to a 1D tensor to match given length
 
-
-@data_operation
-def decode_wav(tensor: tf.Tensor):
-    """
-    Decode a wave file which was read by `tf.io.read_file`
-
-    :param tensor: Tensor with dtype=string
-    :return: Tensor with dtype=int16
-    """
-    decoded = tfio.audio.decode_wav(
-        tensor,
-        dtype=tf.int16
-    )
-    return decoded
+        :param data: 1D numerical tensor of length below given length
+        :return: 1D numerical tensor of given length
+        """
+        zeros = tf.zeros(self.length - tf.shape(data))
+        padded = tf.concat([data, zeros], axis=0)
+        return padded
 
 
-@data_operation
-def squeeze(tensor: tf.Tensor):
-    """
-    Drop the last dimension of a Tensor
+class GetFirstSecond(DataOperation):
+    def __init__(self, sample_rate=16_000):
+        """
 
-    :param tensor: Tensor with dimension [x, 1]
-    :return: Tensor with dimension [x, ]
-    """
-    squeezed = tf.squeeze(
-        tensor,
-        axis=[-1]
-    )
-    return squeezed
+        :param sample_rate: default nsynth = 16_000 hz
+        """
+        self.sample_rate = sample_rate
+        super().__init__()
 
+    def data_op(self, data: tf.Tensor):
+        """
+        Select only the first second of audio
 
-@data_operation
-def cast_normalized_float(tensor: tf.Tensor):
-    """
-    Cast to float and normalize between -1 and 1 by dividing by the max of the absolute
-
-    :param tensor: Tensor with any numerical type
-    :return: Tensor with dtype=float32, ranged between -1 and 1
-    """
-    floated = tf.cast(
-        tensor,
-        tf.float32
-    )
-    absolute = tf.abs(floated)
-    maximum = tf.reduce_max(absolute)
-    normalized = floated / maximum
-    return normalized
+        :param data: 1D numerical tensor
+        :return: 1D numerical tensor with same dtype, shape=(sample_rate, )
+        """
+        first_second = data[:self.sample_rate]
+        return first_second
 
 
-@data_operation
-def trim(tensor: tf.Tensor, epsilon=0.1):
-    """
-    Drop noise at start and end of signal if below threshold
-    :param tensor:
-    :param epsilon:
-    :return:
-    """
-    position = tfio.audio.trim(tensor, axis=0, epsilon=epsilon)
-    start = position[0]
-    stop = position[1]
-    return tensor[start:stop]
+class CreateSpectrogram(DataOperation):
+    def __init__(self, nfft=2048, window=2048, stride=512):
+        self.nfft = nfft
+        self.window = window
+        self.stride = stride
+        super().__init__()
 
+    def data_op(self, data: tf.Tensor):
+        """
+        Create a frequency-time grid with relative intensity from an audio signal. The complex component (phase) is lost.
 
-@data_operation
-def zero_pad(tensor: tf.Tensor, length=64_000):
-    """
-    Add zeros to a 1D tensor to match given length
-
-    :param tensor: 1D numerical tensor of length below given length
-    :param length:
-    :return: 1D numerical tensor of given length
-    """
-    zeros = tf.zeros(length - tf.shape(tensor))
-    padded = tf.concat([tensor, zeros], axis=0)
-    return padded
-
-
-@data_operation
-def get_first_second(tensor: tf.Tensor, sample_rate=16_000):
-    """
-    Select only the first second of audio
-
-    :param tensor: 1D numerical tensor
-    :param sample_rate: default nsynth = 16_000 hz
-    :return: 1D numerical tensor with same dtype, shape=(sample_rate, )
-    """
-    first_second = tensor[:sample_rate]
-    return first_second
-
-
-@data_operation
-def create_spectrogram(tensor: tf.Tensor, nfft=2048, window=2048, stride=512):
-    """
-    Create a frequency-time grid with relative intensity from an audio signal. The complex component (phase) is lost.
-
-    TODO: explain dimensions & axes
-    :param tensor: 1D tensor with dtype=float
-    :param nfft:
-    :param window:
-    :param stride:
-    :return: 2D tensor with dtype=float32
-    """
-    spectrogram = tfio.audio.spectrogram(
-        tensor,
-        nfft=nfft,
-        window=window,
-        stride=stride
-    )
-    return spectrogram
-
-
-@data_operation
-def decode_spectrogram(tensor: tf.Tensor, window=2048, stride=512):
-    """
-    Use librosa's griffinlim to reconstruct a spectrogram without phase to an audio signal.
-
-    :param tensor: 2D tensor with dtype=float32
-    :param window: as used to construct the spectrum
-    :param stride: as used to construct the spectrum
-    :return: 1D tensor with dtype=float32
-    """
-    def _decode(_tensor: tf.Tensor):
-        return librosa.griffinlim(
-            _tensor.numpy().T,
-            win_length=window,
-            hop_length=stride
+        TODO: explain dimensions & axes
+        :param data: 1D tensor with dtype=float
+        :return: 2D tensor with dtype=float32
+        """
+        spectrogram = tfio.audio.spectrogram(
+            data,
+            nfft=self.nfft,
+            window=self.window,
+            stride=self.stride
         )
-    signal = tf.py_function(
-        func=_decode,
-        inp=[tensor],
-        Tout=tf.float32
-    )
-    return signal
+        return spectrogram
 
 
-@data_operation
-def decode_log_spectrogram(tensor: tf.Tensor, window=2048, stride=512):
-    """
-    Use librosa's griffinlim to reconstruct a spectrogram without phase to an audio signal. Do exp(), inverse of log,
-    before decoding.
+class DecodeSpectrogram(DataOperation):
+    def __init__(self, window=2048, stride=512):
+        self.window = window
+        self.stride = stride
+        super().__init__()
 
-    :param tensor: 2D tensor with dtype=float32
-    :param window: as used to construct the spectrum
-    :param stride: as used to construct the spectrum
-    :return: 1D tensor with dtype=float32
-    """
-    def _decode(_tensor: tf.Tensor):
-        return librosa.griffinlim(
-            _tensor.numpy().T,
-            win_length=window,
-            hop_length=stride
+    def data_op(self, data: tf.Tensor):
+        """
+        Use librosa's griffinlim to reconstruct a spectrogram without phase to an audio signal.
+
+        :param data: 2D tensor with dtype=float32
+        :return: 1D tensor with dtype=float32
+        """
+        def _decode(_tensor: tf.Tensor):
+            return librosa.griffinlim(
+                _tensor.numpy().T,
+                win_length=self.window,
+                hop_length=self.stride
+            )
+        signal = tf.py_function(
+            func=_decode,
+            inp=[data],
+            Tout=tf.float32
         )
-
-    unlogged = tf.math.exp(tensor)
-    signal = tf.py_function(
-        func=_decode,
-        inp=[unlogged],
-        Tout=tf.float32
-    )
-    return signal
+        return signal
 
 
-@data_operation
-def create_log_spectrogram(tensor: tf.Tensor, nfft=2048, window=2048, stride=512):
-    """
-    Create a frequency-time grid with relative intensity from an audio signal. The complex component (phase) is lost.
+class DecodeLogSpectrogram(DataOperation):
+    def __init__(self, window=2048, stride=512):
+        self.window = window
+        self.stride = stride
+        super().__init__()
 
-    TODO: explain dimensions & axes
-    :param tensor: 1D tensor with dtype=float
-    :param nfft:
-    :param window:
-    :param stride:
-    :return: 2D tensor with dtype=float32
-    """
-    spectrogram = tfio.audio.spectrogram(
-        tensor,
-        nfft=nfft,
-        window=window,
-        stride=stride
-    )
-    log_spectrogram = tf.math.log(spectrogram)
-    return log_spectrogram
+    def data_op(self, data: tf.Tensor):
+        """
+        Use librosa's griffinlim to reconstruct a spectrogram without phase to an audio signal. Do exp(), inverse of log,
+        before decoding.
+
+        :param data: 2D tensor with dtype=float32
+        :return: 1D tensor with dtype=float32
+        """
+        def _decode(_tensor: tf.Tensor):
+            return librosa.griffinlim(
+                _tensor.numpy().T,
+                win_length=self.window,
+                hop_length=self.stride
+            )
+
+        unlogged = tf.math.exp(data)
+        signal = tf.py_function(
+            func=_decode,
+            inp=[unlogged],
+            Tout=tf.float32
+        )
+        return signal
+
+
+class CreateLogSpectrogram(DataOperation):
+    def __init__(self, nfft=2048, window=2048, stride=512):
+        self.nfft = nfft
+        self.window = window
+        self.stride = stride
+        super().__init__()
+
+    def data_op(self, data: tf.Tensor):
+        """
+        Create a frequency-time grid with relative intensity from an audio signal. The complex component (phase) is lost.
+
+        TODO: explain dimensions & axes
+        :param data: 1D tensor with dtype=float
+        :return: 2D tensor with dtype=float32
+        """
+        spectrogram = tfio.audio.spectrogram(
+            data,
+            nfft=self.nfft,
+            window=self.window,
+            stride=self.stride
+        )
+        log_spectrogram = tf.math.log(spectrogram)
+        return log_spectrogram
+
+
+class CreateSpectrum(DataOperation):
+    def data_op(self, data: tf.Tensor):
+        spectrogram = CreateSpectrogram().data_op(data)
+        spectrum = tf.reduce_sum(spectrogram, axis=0)
+        return spectrum
