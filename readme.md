@@ -22,13 +22,13 @@ THREADS = 8
 FILE_PATTERN = "data/nsynth-test.jsonwav/nsynth-test/audio/bass_electronic_*.wav"
 
 operations = [
-    data_ops.read_file,
-    data_ops.decode_wav,
-    data_ops.squeeze,
-    data_ops.cast_normalized_float,
-    data_ops.create_log_spectrogram,
-    data_ops.decode_log_spectrogram,
-    label_ops.extract_instrument_bucket
+    data_ops.ReadFile(),
+    data_ops.DecodeWav(),
+    data_ops.Squeeze(),
+    data_ops.CastNormalizedFloat(),
+    data_ops.CreateLogSpectrogram(),
+    data_ops.DecodeLogSpectrogram(),
+    label_ops.ExtractPitchSparse()
 ]
 
 audio_dataset = nsynth_io.audio_dataset_from_pattern(FILE_PATTERN)
