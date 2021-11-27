@@ -13,6 +13,7 @@ python -m pytest
 ```
 
 ### Example usage
+
 ```python
 from rimworld.nsynth import io as nsynth_io
 from rimworld.nsynth import data_operations as data_ops
@@ -21,14 +22,20 @@ from rimworld.nsynth import label_operations as label_ops
 THREADS = 8
 FILE_PATTERN = "data/nsynth-test.jsonwav/nsynth-test/audio/bass_electronic_*.wav"
 
+nfft = 2048
+window = 2048
+stride = 512
+
+spectrum = data_ops.Spectrum(nfft=nfft, window=window, stride=stride, log=False)
+
 operations = [
     data_ops.ReadFile(),
     data_ops.DecodeWav(),
     data_ops.Squeeze(),
     data_ops.CastNormalizedFloat(),
-    data_ops.CreateLogSpectrogram(),
-    data_ops.DecodeLogSpectrogram(),
-    label_ops.ExtractPitchSparse()
+    data_ops.GetFirstSecond(),
+    label_ops.AllOnes(),
+    spectrum.get_encoder()
 ]
 
 audio_dataset = nsynth_io.audio_dataset_from_pattern(FILE_PATTERN)

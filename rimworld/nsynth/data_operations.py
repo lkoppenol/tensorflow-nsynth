@@ -2,6 +2,7 @@ import abc
 import tensorflow as tf
 import tensorflow_io as tfio
 import librosa
+import numpy as np
 
 
 class DataOperation(abc.ABC):
@@ -129,11 +130,12 @@ class GetFirstSecond(DataOperation):
         return first_second
 
 
-class CreateSpectrogram(DataOperation):
-    def __init__(self, nfft=2048, window=2048, stride=512):
+class EncodeSpectrogram(DataOperation):
+    def __init__(self, nfft: int, window: int, stride: int, log: bool):
         self.nfft = nfft
         self.window = window
         self.stride = stride
+        self.log = log
         super().__init__()
 
     def data_op(self, data: tf.Tensor):
@@ -150,13 +152,18 @@ class CreateSpectrogram(DataOperation):
             window=self.window,
             stride=self.stride
         )
+
+        if self.log:
+            spectrogram = tf.math.log(spectrogram)
+
         return spectrogram
 
 
 class DecodeSpectrogram(DataOperation):
-    def __init__(self, window=2048, stride=512):
+    def __init__(self, window: int, stride: int, log: bool):
         self.window = window
         self.stride = stride
+        self.log = log
         super().__init__()
 
     def data_op(self, data: tf.Tensor):
@@ -172,6 +179,10 @@ class DecodeSpectrogram(DataOperation):
                 win_length=self.window,
                 hop_length=self.stride
             )
+
+        if self.log:
+            data = tf.math.exp(data)
+
         signal = tf.py_function(
             func=_decode,
             inp=[data],
@@ -180,63 +191,100 @@ class DecodeSpectrogram(DataOperation):
         return signal
 
 
-class DecodeLogSpectrogram(DataOperation):
-    def __init__(self, window=2048, stride=512):
+class Spectrogram:
+    def __init__(self, nfft: int, window: int, stride: int, log: bool = False):
+        self.nfft = nfft
         self.window = window
         self.stride = stride
+        self.log = log
+
+    def get_encoder(self):
+        return EncodeSpectrogram(
+            nfft=self.nfft,
+            window=self.window,
+            stride=self.stride,
+            log=self.log
+        )
+
+    def get_decoder(self):
+        return DecodeSpectrogram(
+            window=self.window,
+            stride=self.stride,
+            log=self.log
+        )
+
+
+class Spectrum:
+    def __init__(self, nfft: int, window: int, stride: int, log: bool = False):
+        self.nfft = nfft
+        self.window = window
+        self.stride = stride
+        self.log = log
+
+    def get_encoder(self):
+        return EncodeSpectrum(
+            nfft=self.nfft,
+            window=self.window,
+            stride=self.stride,
+            log=self.log
+        )
+
+    def get_decoder(self):
+        return DecodeSpectrum(
+            window=self.window,
+            stride=self.stride,
+            log=self.log
+        )
+
+
+class EncodeSpectrum(DataOperation):
+    def __init__(self, nfft: int, window: int, stride: int, log: bool):
+        self.nfft = nfft
+        self.window = window
+        self.stride = stride
+        self.log = log
+        super().__init__()
+
+    def data_op(self, data: tf.Tensor):
+        spectrogram_encoder = EncodeSpectrogram(self.nfft, self.window, self.stride, self.log)
+        spectrogram = spectrogram_encoder.data_op(data)
+        spectrum = tf.reduce_sum(spectrogram, axis=0)
+        power_of_two_spectrum = spectrum[:-1]
+        return power_of_two_spectrum
+
+
+class DecodeSpectrum(DataOperation):
+    def __init__(self, window: int, stride: int, log: bool):
+        self.window = window
+        self.stride = stride
+        self.log = log
         super().__init__()
 
     def data_op(self, data: tf.Tensor):
         """
-        Use librosa's griffinlim to reconstruct a spectrogram without phase to an audio signal. Do exp(), inverse of log,
-        before decoding.
+        Use librosa's griffinlim to reconstruct a spectrogram without phase to an audio signal.
 
         :param data: 2D tensor with dtype=float32
         :return: 1D tensor with dtype=float32
         """
         def _decode(_tensor: tf.Tensor):
+            length = _tensor.shape[0]
+            corrected_length = tf.concat([_tensor, tf.zeros((1, ))], axis=0)
+            corrected_shape = tf.reshape(corrected_length, (length + 1, 1))
+            spectrogram = tf.concat([corrected_shape] * 32, axis=1)
+
             return librosa.griffinlim(
-                _tensor.numpy().T,
+                spectrogram.numpy(),
                 win_length=self.window,
                 hop_length=self.stride
             )
 
-        unlogged = tf.math.exp(data)
+        if self.log:
+            data = tf.math.exp(data)
+
         signal = tf.py_function(
             func=_decode,
-            inp=[unlogged],
+            inp=[data],
             Tout=tf.float32
         )
         return signal
-
-
-class CreateLogSpectrogram(DataOperation):
-    def __init__(self, nfft=2048, window=2048, stride=512):
-        self.nfft = nfft
-        self.window = window
-        self.stride = stride
-        super().__init__()
-
-    def data_op(self, data: tf.Tensor):
-        """
-        Create a frequency-time grid with relative intensity from an audio signal. The complex component (phase) is lost.
-
-        TODO: explain dimensions & axes
-        :param data: 1D tensor with dtype=float
-        :return: 2D tensor with dtype=float32
-        """
-        spectrogram = tfio.audio.spectrogram(
-            data,
-            nfft=self.nfft,
-            window=self.window,
-            stride=self.stride
-        )
-        log_spectrogram = tf.math.log(spectrogram)
-        return log_spectrogram
-
-
-class CreateSpectrum(DataOperation):
-    def data_op(self, data: tf.Tensor):
-        spectrogram = CreateSpectrogram().data_op(data)
-        spectrum = tf.reduce_sum(spectrogram, axis=0)
-        return spectrum
