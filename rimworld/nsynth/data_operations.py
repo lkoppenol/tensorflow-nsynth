@@ -2,7 +2,6 @@ import abc
 import tensorflow as tf
 import tensorflow_io as tfio
 import librosa
-import numpy as np
 
 
 class DataOperation(abc.ABC):
@@ -258,6 +257,7 @@ class DecodeSpectrum(DataOperation):
         self.window = window
         self.stride = stride
         self.log = log
+        self.length = None
         super().__init__()
 
     def data_op(self, data: tf.Tensor):
@@ -267,10 +267,12 @@ class DecodeSpectrum(DataOperation):
         :param data: 2D tensor with dtype=float32
         :return: 1D tensor with dtype=float32
         """
+
         def _decode(_tensor: tf.Tensor):
-            length = _tensor.shape[0]
+            if self.length is None:
+                self.length = _tensor.shape[0]
             corrected_length = tf.concat([_tensor, tf.zeros((1, ))], axis=0)
-            corrected_shape = tf.reshape(corrected_length, (length + 1, 1))
+            corrected_shape = tf.reshape(corrected_length, (self.length + 1, 1))
             spectrogram = tf.concat([corrected_shape] * 32, axis=1)
 
             return librosa.griffinlim(
